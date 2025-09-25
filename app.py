@@ -63,6 +63,10 @@ def main():
     st.sidebar.title("導航")
     mode = st.sidebar.radio("選擇模式", ["報名頁面", "管理者抽獎頁面"])
 
+    # 使用 session_state 來儲存登入狀態
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+
     if mode == "報名頁面":
         st.title("抽獎活動報名表單")
         st.info("請填寫您的資訊，以便參與抽獎！")
@@ -86,66 +90,69 @@ def main():
                         st.balloons()
 
     elif mode == "管理者抽獎頁面":
-        # --- 使用一個表單來處理密碼輸入，避免初始渲染時的錯誤 ---
-        with st.form(key="admin_login_form"):
-            st.subheader("管理者登入")
-            password = st.text_input("輸入密碼", type="password")
-            login_button = st.form_submit_button("登入")
+        # 如果使用者尚未登入
+        if not st.session_state.logged_in:
+            with st.form(key="admin_login_form"):
+                st.subheader("管理者登入")
+                password = st.text_input("輸入密碼", type="password")
+                login_button = st.form_submit_button("登入")
 
-        if login_button:
-            if password == st.secrets.get("admin_password"):
-                st.success("登入成功！")
-                
-                # --- 將後續的抽獎頁面邏輯放入登入成功的條件中 ---
-                st.title("管理者專屬：抽獎控制台")
-                
-                sheet = get_sheet_data()
-                if sheet:
-                    data = sheet.get_all_records()
-                    if data:
-                        df = pd.DataFrame(data)
-                        
-                        eligible_df = df[df['是否中獎'] != '是']
-                        
-                        st.markdown(f"### 目前共有 {len(eligible_df)} 位合格參與者：")
-                        st.dataframe(eligible_df)
-    
-                        if not eligible_df.empty:
-                            num_winners = st.number_input(
-                                "請輸入要抽出的得獎者人數：", 
-                                min_value=1, 
-                                max_value=len(eligible_df), 
-                                value=1, 
-                                step=1
-                            )
-        
-                            if st.button("開始抽獎！"):
-                                if num_winners > 0 and num_winners <= len(eligible_df):
-                                    with st.spinner("正在抽出幸運兒..."):
-                                        time.sleep(2)
-                                        winners = draw_winners(eligible_df, num_winners)
+            if login_button:
+                if password == st.secrets.get("admin_password"):
+                    st.session_state.logged_in = True
+                    st.success("登入成功！")
+                    # 重新執行以顯示抽獎控制台
+                    st.rerun()
+                else:
+                    st.error("密碼錯誤。")
+        else:
+            # 登入成功後顯示的抽獎頁面
+            st.title("管理者專屬：抽獎控制台")
+            
+            sheet = get_sheet_data()
+            if sheet:
+                data = sheet.get_all_records()
+                if data:
+                    df = pd.DataFrame(data)
+                    
+                    # 篩選出尚未中獎的參與者
+                    eligible_df = df[df['是否中獎'] != '是']
+                    
+                    st.markdown(f"### 目前共有 {len(eligible_df)} 位合格參與者：")
+                    st.dataframe(eligible_df)
+
+                    if not eligible_df.empty:
+                        num_winners = st.number_input(
+                            "請輸入要抽出的得獎者人數：", 
+                            min_value=1, 
+                            max_value=len(eligible_df), 
+                            value=1, 
+                            step=1
+                        )
+                    
+                        if st.button("開始抽獎！"):
+                            if num_winners > 0 and num_winners <= len(eligible_df):
+                                with st.spinner("正在抽出幸運兒..."):
+                                    time.sleep(2)
+                                    winners = draw_winners(eligible_df, num_winners)
+                                    
+                                    if winners:
+                                        st.balloons()
+                                        st.success("🎉🎉🎉 恭喜以下幸運兒！ 🎉🎉🎉")
+                                        for winner in winners:
+                                            st.success(f"**姓名**：{winner['姓名']}")
+                                            st.write(f"**聯絡信箱**：{winner['電子郵件']}")
+                                        st.success("🎉🎉🎉")
                                         
-                                        if winners:
-                                            st.balloons()
-                                            st.success("🎉🎉🎉 恭喜以下幸運兒！ 🎉🎉🎉")
-                                            for winner in winners:
-                                                st.success(f"**姓名**：{winner['姓名']}")
-                                                st.write(f"**聯絡信箱**：{winner['電子郵件']}")
-                                            st.success("🎉🎉🎉")
-                                            
-                                            update_winners_status(sheet, winners)
-        
-                                        else:
-                                            st.error("抽獎失敗，請確認名單。")
-                                else:
-                                    st.error("抽獎人數必須大於 0 且不超過合格參與者總數。")
-                        else:
-                            st.warning("目前沒有任何合格的參與者，所有人都已經中過獎。")
+                                        update_winners_status(sheet, winners)
+                                    else:
+                                        st.error("抽獎失敗，請確認名單。")
+                            else:
+                                st.error("抽獎人數必須大於 0 且不超過合格參與者總數。")
                     else:
-                        st.warning("目前沒有任何參與者報名。")
-            else:
-                st.error("密碼錯誤。")
-
+                        st.warning("目前沒有任何合格的參與者，所有人都已經中過獎。")
+                else:
+                    st.warning("目前沒有任何參與者報名。")
 
 if __name__ == "__main__":
     main()
