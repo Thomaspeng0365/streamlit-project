@@ -12,9 +12,20 @@ except Exception as e:
     st.error(f"無法連接到 Google Sheets。請檢查 .streamlit/secrets.toml 檔案和服務帳號權限。錯誤：{e}")
     st.stop()
 
+#--- 新增的函式 ---
+def is_email_already_registered(sheet, email):
+    """檢查電子郵件是否已存在於 Google Sheet 中。"""
+    try:
+        # 讀取整個電子郵件欄位 (第 2 列)
+        emails_list = sheet.col_values(2)
+        # 檢查輸入的電子郵件是否已在列表中
+        return email in emails_list
+    except Exception as e:
+        st.error(f"檢查重複電子郵件時發生錯誤：{e}")
+        return False
+
 def get_sheet_data():
     """連接並取得 Google Sheet 的資料。"""
-    # 開啟你的 Google Sheet，請將 '抽獎名單' 替換為你的表格名稱
     try:
         worksheet = gc.open("抽獎名單").sheet1
         return worksheet
@@ -40,24 +51,28 @@ def main():
             name = st.text_input("姓名")
             email = st.text_input("電子郵件")
             submit_button = st.form_submit_button("提交報名")
-
+        
         if submit_button:
-            if name and email:
+            if not name or not email:
+                st.error("姓名和電子郵件為必填欄位。")
+            else:
                 sheet = get_sheet_data()
                 if sheet:
-                    # 將新資料新增到 Google Sheet 的新一行
-                    sheet.append_row([name, email])
-                    st.success("報名成功！感謝您的參與！")
-                    st.balloons()
-            else:
-                st.error("姓名和電子郵件為必填欄位。")
+                    #--- 檢查重複電子郵件 ---
+                    if is_email_already_registered(sheet, email):
+                        st.warning("您使用的電子郵件已報名過，請勿重複提交。")
+                    else:
+                        # 將新資料新增到 Google Sheet 的新一行
+                        sheet.append_row([name, email])
+                        st.success("報名成功！感謝您的參與！")
+                        st.balloons()
 
     elif mode == "管理者抽獎頁面":
         password = st.sidebar.text_input("輸入密碼", type="password")
-
+        
         if password == st.secrets.get("admin_password"):
             st.title("管理者專屬：抽獎控制台")
-
+            
             sheet = get_sheet_data()
             if sheet:
                 # 讀取所有行，並轉換成 DataFrame
@@ -71,7 +86,7 @@ def main():
                         with st.spinner("正在抽出幸運兒..."):
                             time.sleep(2)
                             winner = draw_winner(df)
-
+                            
                             if winner:
                                 st.balloons()
                                 st.success("🎉🎉🎉")
